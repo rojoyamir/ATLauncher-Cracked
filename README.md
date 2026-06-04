@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="src/main/resources/assets/image/icon.png" alt="ATLauncher Offline" width="120" />
+<img src="logo.png" alt="ATLauncher Offline" width="120" />
 
 # ATLauncher Offline
 
