@@ -18,15 +18,9 @@
 
 ## English
 
+
 ATLauncher Offline is a compact fork of [ATLauncher/ATLauncher](https://github.com/ATLauncher/ATLauncher) focused on local offline accounts, portable use, and modpack management.
 
-### Overview
-
-- Portable standalone launcher
-- Local offline accounts for single-player
-- Modpack support where available
-- Optional Windows desktop shortcut
-- Java/JRE handling for simpler setup
 
 ### 🚀 Quick Start
 
@@ -67,13 +61,6 @@ This launcher is not affiliated with, approved by, or endorsed by Mojang, Micros
 
 ATLauncher Offline es un fork compacto de [ATLauncher/ATLauncher](https://github.com/ATLauncher/ATLauncher) centrado en cuentas offline locales, uso portable y gestión de modpacks.
 
-### Resumen
-
-- Lanzador portable independiente
-- Cuentas offline locales para single-player
-- Soporte para modpacks donde esté disponible
-- Opción de acceso directo en Windows
-- Gestión de Java/JRE para simplificar la instalación
 
 ### 🚀 Inicio rápido
 
