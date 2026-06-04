@@ -1,0 +1,62 @@
+# Build and Dependencies
+.gradle/
+build/
+dist/
+out/
+*.jar
+*.class
+
+# Runtime
+bin/
+run/
+
+# IDE and Editor Config
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.settings/
+.classpath
+.project
+.factorypath
+eclipse.ini
+
+# Test and Runtime Directories
+testLauncher/
+java_pid*.hprof
+
+# OS-specific
+.DS_Store
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+Thumbs.db
+desktop.ini
+
+# Logs and Temp Files
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+
+# Security and Configuration
+.actrc
+.secrets
+crowdin.yml
+local.properties
+
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+
+# macOS extras
+.AppleDouble
+.LSOverride
