@@ -22,6 +22,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
+import java.util.Locale;
+import java.util.stream.Stream;
+
+import javax.swing.filechooser.FileSystemView;
 
 import com.atlauncher.managers.LogManager;
 
@@ -31,41 +36,45 @@ public class ShortcutManager {
      */
     public static boolean createDesktopShortcut() {
         try {
-            // Get the path to the currently running EXE
             String exePath = getExePath();
             if (exePath == null || exePath.isEmpty()) {
                 LogManager.warn("Could not determine EXE path for shortcut");
                 return false;
             }
 
-            // Desktop folder
-            String desktop = System.getProperty("user.home") + "\\Desktop";
-            String shortcutPath = desktop + "\\ATLauncher Offline.lnk";
-
-            // Create VBScript to generate .lnk file (portable, no external deps)
-            String vbScript = createVBScript(exePath, shortcutPath);
-
-            // Write VBScript to temp file
-            Path tempScript = Files.createTempFile("atlauncher_shortcut_", ".vbs");
-            Files.write(tempScript, vbScript.getBytes(StandardCharsets.UTF_8));
-
-            // Execute VBScript
-            ProcessBuilder pb = new ProcessBuilder("cscript.exe", tempScript.toString());
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-            int exitCode = process.waitFor();
-
-            // Clean up temp file
-            Files.deleteIfExists(tempScript);
-
-            if (exitCode == 0) {
-                LogManager.info("Desktop shortcut created successfully at " + shortcutPath);
-                return true;
-            } else {
-                LogManager.warn("VBScript exited with code " + exitCode);
+            Path desktopPath = getDesktopPath();
+            if (desktopPath == null) {
+                LogManager.warn("Could not determine desktop path for shortcut");
                 return false;
             }
 
+            Path shortcutPath = desktopPath.resolve("ATLauncher Offline.lnk");
+            String vbScript = createVBScript(exePath, shortcutPath.toString());
+            Path tempScript = Files.createTempFile("atlauncher_shortcut_", ".vbs");
+            Files.write(tempScript, vbScript.getBytes(StandardCharsets.UTF_8));
+
+            LogManager.info("Creating desktop shortcut target=" + exePath + " shortcut=" + shortcutPath);
+
+            ProcessBuilder pb = new ProcessBuilder("cscript.exe", "//nologo", tempScript.toString());
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            String scriptOutput = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
+                .trim();
+            int exitCode = process.waitFor();
+
+            Files.deleteIfExists(tempScript);
+
+            if (exitCode == 0 && Files.exists(shortcutPath)) {
+                LogManager.info("Desktop shortcut created successfully at " + shortcutPath);
+                if (!scriptOutput.isEmpty()) {
+                    LogManager.info("cscript.exe output: " + scriptOutput);
+                }
+                return true;
+            }
+
+            LogManager.warn("Desktop shortcut creation failed target=" + exePath + " shortcut=" + shortcutPath
+                + " exitCode=" + exitCode + " output=" + scriptOutput);
+            return false;
         } catch (Exception e) {
             LogManager.logStackTrace("Error creating desktop shortcut", e);
             return false;
@@ -77,35 +86,23 @@ public class ShortcutManager {
      */
     private static String getExePath() {
         try {
-            // Try to get from sun.java.command property (set by Launch4j)
-            String cmd = System.getProperty("sun.java.command", "");
-            if (!cmd.isEmpty()) {
-                // Format is typically: "path\to\ATLauncher.exe" [other args]
-                String[] parts = cmd.split(" ");
-                if (parts.length > 0) {
-                    String exePath = parts[0].replaceAll("\"", "");
-                    if (exePath.endsWith(".exe")) {
-                        return exePath;
-                    }
-                }
+            Path codeSourcePath = Paths.get(ShortcutManager.class.getProtectionDomain().getCodeSource()
+                .getLocation().toURI()).toAbsolutePath().normalize();
+
+            if (codeSourcePath.toString().toLowerCase(Locale.ROOT).endsWith(".exe")) {
+                return codeSourcePath.toString();
             }
 
-            // Fallback: construct path based on classloader
-            String classPath = ShortcutManager.class.getProtectionDomain().getCodeSource().getLocation().getPath();
-            if (classPath.contains(".exe")) {
-                return classPath.substring(0, classPath.lastIndexOf(".exe") + 4);
+            Path candidate = findAdjacentExe(codeSourcePath.getParent());
+            if (candidate != null) {
+                return candidate.toString();
             }
 
-            // Final fallback: check if running from a JAR and find adjacent EXE
-            File classPathFile = new File(classPath);
-            if (classPathFile.getParent() != null) {
-                File[] files = new File(classPathFile.getParent()).listFiles();
-                if (files != null) {
-                    for (File f : files) {
-                        if (f.getName().endsWith(".exe")) {
-                            return f.getAbsolutePath();
-                        }
-                    }
+            String cmd = System.getProperty("sun.java.command", "").trim();
+            if (cmd.toLowerCase(Locale.ROOT).endsWith(".exe")) {
+                Path commandPath = Paths.get(cmd.replace("\"", "")).toAbsolutePath().normalize();
+                if (Files.exists(commandPath)) {
+                    return commandPath.toString();
                 }
             }
 
@@ -116,18 +113,64 @@ public class ShortcutManager {
         }
     }
 
+    private static Path getDesktopPath() {
+        File desktopDirectory = FileSystemView.getFileSystemView().getHomeDirectory();
+        if (desktopDirectory != null && desktopDirectory.isDirectory()) {
+            return desktopDirectory.toPath();
+        }
+
+        String userHome = System.getProperty("user.home");
+        if (userHome == null || userHome.isEmpty()) {
+            return null;
+        }
+
+        return Paths.get(userHome, "Desktop");
+    }
+
+    private static Path findAdjacentExe(Path directory) throws Exception {
+        if (directory == null || !Files.isDirectory(directory)) {
+            return null;
+        }
+
+        try (Stream<Path> files = Files.list(directory)) {
+            List<Path> executables = files
+                .filter(Files::isRegularFile)
+                .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".exe"))
+                .sorted()
+                .toList();
+
+            if (executables.isEmpty()) {
+                return null;
+            }
+
+            for (Path executable : executables) {
+                String name = executable.getFileName().toString().toLowerCase(Locale.ROOT);
+                if (name.startsWith("atlauncher-offline")) {
+                    return executable.toAbsolutePath().normalize();
+                }
+            }
+
+            return executables.get(0).toAbsolutePath().normalize();
+        }
+    }
+
     /**
      * Generate VBScript code to create a Windows .lnk shortcut file.
      */
     private static String createVBScript(String exePath, String shortcutPath) {
-        // VBScript to create a .lnk shortcut
+        String workingDirectory = new File(exePath).getParent();
+
         return "Set oWS = WScript.CreateObject(\"WScript.Shell\")\n" +
-               "sLinkFile = \"" + shortcutPath + "\"\n" +
-               "Set oLink = oWS.CreateShortcut(sLinkFile)\n" +
-               "oLink.TargetPath = \"" + exePath + "\"\n" +
-               "oLink.WorkingDirectory = \"" + new File(exePath).getParent() + "\"\n" +
-               "oLink.Description = \"ATLauncher Offline\"\n" +
-               "oLink.Save\n" +
-               "WScript.Echo \"Shortcut created\"\n";
+            "sLinkFile = \"" + escapeForVbscript(shortcutPath) + "\"\n" +
+            "Set oLink = oWS.CreateShortcut(sLinkFile)\n" +
+            "oLink.TargetPath = \"" + escapeForVbscript(exePath) + "\"\n" +
+            "oLink.WorkingDirectory = \"" + escapeForVbscript(workingDirectory) + "\"\n" +
+            "oLink.Description = \"ATLauncher Offline\"\n" +
+            "oLink.Save\n" +
+            "WScript.Echo \"Shortcut created\"\n";
+    }
+
+    private static String escapeForVbscript(String value) {
+        return value.replace("\"", "\"\"");
     }
 }
